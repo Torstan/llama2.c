@@ -15,6 +15,7 @@ run: run.c run.cpp
 rundebug: run.c
 	$(CC) -g -o run run.c -lm
 	$(CC) -g -o runq runq.c -lm
+	$(CXX) -g -std=c++17 -o runcpp run.cpp -lm -lpthread
 
 # https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 # https://simonbyrne.github.io/notes/fastmath/
@@ -29,14 +30,16 @@ rundebug: run.c
 runfast: run.c
 	$(CC) -Ofast -o run run.c -lm
 	$(CC) -Ofast -o runq runq.c -lm
+	$(CXX) -Ofast -std=c++17 -o runcpp run.cpp -lm -lpthread
 
 # additionally compiles with OpenMP, allowing multithreaded runs
 # make sure to also enable multiple threads when running, e.g.:
 # OMP_NUM_THREADS=4 ./run out/model.bin
 .PHONY: runomp
-runomp: run.c
+runomp: run.c run.cpp
 	$(CC) -Ofast -fopenmp -march=native run.c  -lm  -o run
 	$(CC) -Ofast -fopenmp -march=native runq.c  -lm  -o runq
+	$(CXX) -Ofast -fopenmp -march=native -std=c++17 -o runcpp run.cpp -lm -lpthread
 
 .PHONY: win64
 win64:
@@ -58,10 +61,6 @@ runompgnu:
 .PHONY: runcpp
 runcpp: run.cpp
 	$(CXX) -O3 -std=c++17 -o runcpp run.cpp -lm -lpthread
-
-.PHONY: runcppomp
-runcppomp: run.cpp
-	$(CXX) -Ofast -fopenmp -march=native -std=c++17 run.cpp -lm -lpthread -o runcpp
 
 # build both C and C++ for verification
 .PHONY: verify
