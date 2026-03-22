@@ -1,12 +1,14 @@
 # choose your compiler, e.g. gcc/clang
 # example override to clang: make run CC=clang
 CC = gcc
+CXX = g++
 
 # the most basic way of building that is most likely to work on most systems
 .PHONY: run
-run: run.c
+run: run.c run.cpp
 	$(CC) -O3 -o run run.c -lm
 	$(CC) -O3 -o runq runq.c -lm
+	$(CXX) -O3 -std=c++17 -o runcpp run.cpp -lm -lpthread
 
 # useful for a debug build, can then e.g. analyze with valgrind, example:
 # $ valgrind --leak-check=full ./run out/model.bin -n 3
@@ -52,6 +54,21 @@ runompgnu:
 	$(CC) -Ofast -fopenmp -std=gnu11 run.c  -lm  -o run
 	$(CC) -Ofast -fopenmp -std=gnu11 runq.c  -lm  -o runq
 
+# C++ build targets
+.PHONY: runcpp
+runcpp: run.cpp
+	$(CXX) -O3 -std=c++17 -o runcpp run.cpp -lm -lpthread
+
+.PHONY: runcppomp
+runcppomp: run.cpp
+	$(CXX) -Ofast -fopenmp -march=native -std=c++17 run.cpp -lm -lpthread -o runcpp
+
+# build both C and C++ for verification
+.PHONY: verify
+verify: run.c run.cpp
+	$(CC) -O3 -o run_c run.c -lm
+	$(CXX) -O3 -std=c++17 -o run_cpp run.cpp -lm -lpthread
+
 # run all tests
 .PHONY: test
 test:
@@ -74,3 +91,5 @@ testcc:
 clean:
 	rm -f run
 	rm -f runq
+	rm -f runcpp
+	rm -f run_c run_cpp
