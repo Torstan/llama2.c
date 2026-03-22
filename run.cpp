@@ -827,80 +827,6 @@ struct InferenceTask {
     int thread_id;
 };
 
-static std::mutex print_mutex;
-
-static void parallel_generate(const Transformer& transformer, Tokenizer& tokenizer,
-                               const std::vector<InferenceTask>& tasks) {
-    std::vector<std::thread> threads;
-    threads.reserve(tasks.size());
-
-    for (const auto& task : tasks) {
-        threads.emplace_back([&transformer, &tokenizer, &task]() {
-            RunState state(transformer.config);
-            Sampler sampler(transformer.config.vocab_size, task.temperature, task.topp, task.rng_seed);
-
-            const char* prompt = task.prompt;
-            const char* empty_prompt = "";
-            if (prompt == nullptr) { prompt = empty_prompt; }
-
-            int num_prompt_tokens = 0;
-            int* prompt_tokens = static_cast<int*>(malloc((strlen(prompt)+3) * sizeof(int)));
-            tokenizer.encode(prompt, 1, 0, prompt_tokens, &num_prompt_tokens);
-            if (num_prompt_tokens < 1) {
-                fprintf(stderr, "something is wrong, expected at least 1 prompt token\n");
-                free(prompt_tokens);
-                return;
-            }
-
-            std::string output;
-            long start = 0;
-            int next;
-            int token = prompt_tokens[0];
-            int pos = 0;
-            while (pos < task.steps) {
-                float* logits = transformer.forward(state, token, pos);
-                if (pos < num_prompt_tokens - 1) {
-                    next = prompt_tokens[pos + 1];
-                } else {
-                    next = sampler.sample(logits);
-                }
-                pos++;
-                if (next == 1) { break; }
-                char* piece = tokenizer.decode(token, next);
-                if (piece != nullptr && piece[0] != '\0') {
-                    if (piece[1] == '\0') {
-                        unsigned char byte_val = piece[0];
-                        if (isprint(byte_val) || isspace(byte_val)) {
-                            output += piece;
-                        }
-                    } else {
-                        output += piece;
-                    }
-                }
-                token = next;
-                if (start == 0) { start = time_in_ms(); }
-            }
-
-            long end = time_in_ms();
-            double tok_s = (pos > 1) ? (pos-1) / (double)(end-start)*1000 : 0;
-
-            {
-                std::lock_guard<std::mutex> lock(print_mutex);
-                printf("[Thread %d] %s\n", task.thread_id, output.c_str());
-                if (pos > 1) {
-                    fprintf(stderr, "[Thread %d] achieved tok/s: %f\n", task.thread_id, tok_s);
-                }
-            }
-
-            free(prompt_tokens);
-        });
-    }
-
-    for (auto& t : threads) {
-        t.join();
-    }
-}
-
 // ----------------------------------------------------------------------------
 // CLI
 
@@ -973,20 +899,6 @@ int main(int argc, char *argv[]) {
         RunState state(transformer.config);
         Sampler sampler(transformer.config.vocab_size, temperature, topp, rng_seed);
         chat(transformer, tokenizer, sampler, prompt, system_prompt, steps, state);
-    } else if (strcmp(mode, "parallel") == 0) {
-        // Multi-threaded parallel inference
-        std::vector<InferenceTask> tasks;
-        for (int i = 0; i < num_threads; i++) {
-            InferenceTask task;
-            task.prompt = prompt;
-            task.steps = steps;
-            task.temperature = temperature;
-            task.topp = topp;
-            task.rng_seed = rng_seed + i;  // different seed per thread for variety
-            task.thread_id = i;
-            tasks.push_back(task);
-        }
-        parallel_generate(transformer, tokenizer, tasks);
     } else {
         fprintf(stderr, "unknown mode: %s\n", mode);
         error_usage();
